@@ -130,7 +130,7 @@ impl Frame {
 					.map(|i| self.item.as_ref().unwrap().transpose_one(i, version))
 					.collect()
 			}),
-			fod_platforms: version.gte(3, 18).then(|| {
+			fod_platforms: self.fod_platform_offset.as_ref().map(|_| {
 				let (start, end) = self.fod_platform_offset.as_ref().unwrap().start_end(i);
 				(start..end)
 					.map(|i| {
@@ -141,7 +141,7 @@ impl Frame {
 					})
 					.collect()
 			}),
-			dreamland_whispys: version.gte(3, 18).then(|| {
+			dreamland_whispys: self.dreamland_whispy_offset.as_ref().map(|_| {
 				let (start, end) = self.dreamland_whispy_offset.as_ref().unwrap().start_end(i);
 				(start..end)
 					.map(|i| {
@@ -152,7 +152,7 @@ impl Frame {
 					})
 					.collect()
 			}),
-			stadium_transformations: version.gte(3, 18).then(|| {
+			stadium_transformations: self.stadium_transformation_offset.as_ref().map(|_| {
 				let (start, end) = self
 					.stadium_transformation_offset
 					.as_ref()

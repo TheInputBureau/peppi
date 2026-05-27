@@ -297,6 +297,21 @@ fn player_bytes<const N: usize, const M: usize>(r: &mut &[u8]) -> Result<[[u8; N
 	Ok(arrs)
 }
 
+fn player_bytes_at<const N: usize, const M: usize>(bytes: &[u8], start: usize) -> Option<[[u8; N]; M]> {
+	let total_len = N.checked_mul(M)?;
+	let end = start.checked_add(total_len)?;
+	if end > bytes.len() {
+		return None;
+	}
+
+	let mut out = [[0u8; N]; M];
+	for (index, dst) in out.iter_mut().enumerate() {
+		let from = start + index * N;
+		dst.copy_from_slice(&bytes[from..from + N]);
+	}
+	Some(out)
+}
+
 pub(crate) fn game_start(r: &mut &[u8]) -> Result<game::Start> {
 	let bytes = game::Bytes(r.to_vec());
 	let ver = slippi::Version(r.read_u8()?, r.read_u8()?, r.read_u8()?);
@@ -362,12 +377,15 @@ pub(crate) fn game_start(r: &mut &[u8]) -> Result<game::Start> {
 		_ => None,
 	};
 
-	let players_v3_9 = match ver.gte(3, 9) {
-		true => Some((
+	let players_v3_9 = if ver.gte(3, 9) {
+		Some((
 			player_bytes::<31, NUM_PORTS>(r)?,
 			player_bytes::<10, NUM_PORTS>(r)?,
-		)),
-		_ => None,
+		))
+	} else {
+		let fallback_names = player_bytes_at::<31, NUM_PORTS>(&bytes.0, 0x1a4);
+		let fallback_codes = player_bytes_at::<10, NUM_PORTS>(&bytes.0, 0x220);
+		fallback_names.zip(fallback_codes)
 	};
 
 	let players_v3_11 = match ver.gte(3, 11) {
@@ -635,6 +653,14 @@ pub fn parse_start<R: Read>(mut r: R, opts: Option<&Opts>) -> Result<ParseState>
 		quirks: None,
 	};
 
+	let mut game = game;
+	if payload_sizes[Event::FodPlatform as usize].is_some()
+		|| payload_sizes[Event::DreamlandWhispy as usize].is_some()
+		|| payload_sizes[Event::StadiumTransformation as usize].is_some()
+	{
+		game.frames.enable_stage_event_buffers(capacity, version);
+	}
+
 	let port_indexes = {
 		let mut result = [0, 0, 0, 0];
 		for (i, p) in ports.into_iter().enumerate() {
@@ -817,7 +843,7 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 						.try_into()
 						.unwrap(),
 				);
-				if state.game.start.slippi.version.gte(3, 18) {
+				if state.game.frames.fod_platform_offset.is_some() {
 					push_offset::<u8>(
 						&mut state.game.frames.fod_platform_offset,
 						state
@@ -831,6 +857,8 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 							.try_into()
 							.unwrap(),
 					);
+				}
+				if state.game.frames.dreamland_whispy_offset.is_some() {
 					push_offset::<u8>(
 						&mut state.game.frames.dreamland_whispy_offset,
 						state
@@ -844,6 +872,8 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 							.try_into()
 							.unwrap(),
 					);
+				}
+				if state.game.frames.stadium_transformation_offset.is_some() {
 					push_offset::<u16>(
 						&mut state.game.frames.stadium_transformation_offset,
 						state

@@ -762,6 +762,38 @@ fn v3_18() {
 }
 
 #[test]
+fn stage_event_fixtures() {
+	let fixtures = [
+		("../slippi-js/slp/stadiumTransformations.slp", 0usize, 0usize, 1usize),
+		("../slippi-js/slp/FodPlatforms.slp", 1usize, 0usize, 0usize),
+		("../slippi-js/slp/Whispy.slp", 0usize, 1usize, 0usize),
+	];
+
+	for (relative_path, expect_fod, expect_whispy, expect_stadium) in fixtures {
+		let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
+		let game = read_game(&path, false).expect("fixture should parse");
+		let mut fod_events = 0usize;
+		let mut whispy_events = 0usize;
+		let mut stadium_events = 0usize;
+
+		for index in 0..game.frames.len() {
+			let frame = game.frames.transpose_one(index, game.start.slippi.version);
+			fod_events += frame.fod_platforms.as_ref().map_or(0, Vec::len);
+			whispy_events += frame.dreamland_whispys.as_ref().map_or(0, Vec::len);
+			stadium_events += frame.stadium_transformations.as_ref().map_or(0, Vec::len);
+		}
+
+		assert!(fod_events >= expect_fod, "expected FOD events in {}", path.display());
+		assert!(whispy_events >= expect_whispy, "expected Whispy events in {}", path.display());
+		assert!(
+			stadium_events >= expect_stadium,
+			"expected stadium events in {}",
+			path.display()
+		);
+	}
+}
+
+#[test]
 fn unknown_event() {
 	// shouldn't panic
 	// TODO: check for warning

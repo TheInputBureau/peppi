@@ -159,6 +159,21 @@ impl Frame {
 		}
 	}
 
+	pub(crate) fn enable_stage_event_buffers(&mut self, capacity: usize, version: Version) {
+		if self.fod_platform.is_none() {
+			self.fod_platform = Some(FodPlatform::with_capacity(0, version));
+			self.fod_platform_offset = Some(Offsets::<i32>::with_capacity(capacity));
+		}
+		if self.dreamland_whispy.is_none() {
+			self.dreamland_whispy = Some(DreamlandWhispy::with_capacity(0, version));
+			self.dreamland_whispy_offset = Some(Offsets::<i32>::with_capacity(capacity));
+		}
+		if self.stadium_transformation.is_none() {
+			self.stadium_transformation = Some(StadiumTransformation::with_capacity(0, version));
+			self.stadium_transformation_offset = Some(Offsets::<i32>::with_capacity(capacity));
+		}
+	}
+
 	pub fn len(&self) -> usize {
 		self.id.len()
 	}
@@ -183,7 +198,7 @@ impl Frame {
 					.map(|i| self.item.as_ref().unwrap().transpose_one(i, version))
 					.collect()
 			}),
-			fod_platforms: version.gte(3, 18).then(|| {
+			fod_platforms: self.fod_platform_offset.as_ref().map(|offsets| {
 				let (start, end) = self.fod_platform_offset.as_ref().unwrap().start_end(i);
 				(start..end)
 					.map(|i| {
@@ -194,7 +209,7 @@ impl Frame {
 					})
 					.collect()
 			}),
-			dreamland_whispys: version.gte(3, 18).then(|| {
+			dreamland_whispys: self.dreamland_whispy_offset.as_ref().map(|offsets| {
 				let (start, end) = self.dreamland_whispy_offset.as_ref().unwrap().start_end(i);
 				(start..end)
 					.map(|i| {
@@ -205,7 +220,7 @@ impl Frame {
 					})
 					.collect()
 			}),
-			stadium_transformations: version.gte(3, 18).then(|| {
+			stadium_transformations: self.stadium_transformation_offset.as_ref().map(|offsets| {
 				let (start, end) = self
 					.stadium_transformation_offset
 					.as_ref()
@@ -957,13 +972,27 @@ impl Pre {
 				r.read_f32::<BE>()
 					.map(|x| self.percent.as_mut().unwrap().push(Some(x)))?;
 				if version.gte(3, 15) {
-					r.read_i8()
-						.map(|x| self.raw_analog_y.as_mut().unwrap().push(Some(x)))?;
+					if r.is_empty() {
+						self.raw_analog_y.as_mut().unwrap().push_null();
+					} else {
+						r.read_i8()
+							.map(|x| self.raw_analog_y.as_mut().unwrap().push(Some(x)))?;
+					}
 					if version.gte(3, 17) {
-						r.read_i8()
-							.map(|x| self.raw_analog_cstick_x.as_mut().unwrap().push(Some(x)))?;
-						r.read_i8()
-							.map(|x| self.raw_analog_cstick_y.as_mut().unwrap().push(Some(x)))?
+						if r.is_empty() {
+							self.raw_analog_cstick_x.as_mut().unwrap().push_null();
+						} else {
+							r.read_i8().map(|x| {
+								self.raw_analog_cstick_x.as_mut().unwrap().push(Some(x))
+							})?;
+						}
+						if r.is_empty() {
+							self.raw_analog_cstick_y.as_mut().unwrap().push_null();
+						} else {
+							r.read_i8().map(|x| {
+								self.raw_analog_cstick_y.as_mut().unwrap().push(Some(x))
+							})?
+						}
 					}
 				}
 			}
