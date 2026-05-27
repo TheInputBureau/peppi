@@ -3,11 +3,9 @@
 //! This is what you'll get when you parse a game in one shot using [`crate::io::slippi::read`] or
 //! [`crate::io::peppi::read`].
 
-use serde_json::{Map, Value};
-
 use crate::{
 	frame::{immutable::Frame, transpose},
-	game::{self, End, GeckoCodes, Quirks, Start},
+	game::{self, End, GeckoCodes, Metadata, Quirks, Start},
 };
 
 #[derive(Debug)]
@@ -15,7 +13,7 @@ pub struct Game {
 	pub start: Start,
 	pub end: Option<End>,
 	pub frames: Frame,
-	pub metadata: Option<Map<String, Value>>,
+	pub metadata: Option<Metadata>,
 	pub gecko_codes: Option<GeckoCodes>,
 	pub hash: Option<String>,
 	pub quirks: Option<Quirks>,
@@ -30,7 +28,7 @@ impl game::Game for Game {
 		&self.end
 	}
 
-	fn metadata(&self) -> &Option<Map<String, Value>> {
+	fn metadata(&self) -> &Option<Metadata> {
 		&self.metadata
 	}
 

@@ -54,7 +54,7 @@ pub fn write<W: Write>(w: W, game: Game, opts: Option<&Opts>) -> Result<(), Box<
 	)?;
 	tar_append(
 		&mut tar,
-		&serde_json::to_vec(&game.metadata)?,
+		&serde_json::to_vec(&game.metadata.as_ref().map(|metadata| metadata.to_raw()))?,
 		"metadata.json",
 	)?;
 	tar_append(&mut tar, &serde_json::to_vec(&game.start)?, "start.json")?;

@@ -38,6 +38,29 @@ fn json_metadata() {
 }
 
 #[test]
+fn json_metadata_raw_roundtrip() {
+	let game = game("v3.12");
+	assert_eq!(
+		serde_json::to_value(game.metadata.unwrap().to_raw()).unwrap(),
+		json!({
+			"startAt":"2022-06-04T21:58:00Z",
+			"playedOn":"dolphin",
+			"lastFrame":0,
+			"players":{
+				"0":{
+					"characters":{"18":124},
+					"names":{"netplay":"xxxxxx","code":"XX#111"}
+				},
+				"1":{
+					"characters":{"18":124},
+					"names":{"netplay":"yyyyyyyyy","code":"YYYY#222"}
+				}
+			}
+		})
+	)
+}
+
+#[test]
 fn json_start() {
 	let game = game("v3.12");
 	assert_eq!(
@@ -80,7 +103,8 @@ fn json_start() {
 						"name":"xxxxxx",
 						"code":"XX＃111",
 						"suid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-					}
+					},
+					"user_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 				},
 				{
 					"port":"P2",
@@ -106,7 +130,8 @@ fn json_start() {
 						"name":"yyyyyyyyyy",
 						"code":"YYYY＃222",
 						"suid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-					}
+					},
+					"user_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 				}
 			],
 			"random_seed":39656,

@@ -3,7 +3,10 @@
 //! The mutable/immutable distinction is essentially an artifact of the underlying Arrow library.
 //! You'll only encounter mutable data if you're parsing live games.
 
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+	collections::BTreeMap,
+	fmt::{self, Debug, Display, Formatter},
+};
 
 use base64::prelude::{BASE64_STANDARD, Engine};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -140,6 +143,204 @@ pub struct Netplay {
 	pub suid: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MetadataPlatform {
+	Dolphin,
+	Network,
+	Nintendont,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetadataNames {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub netplay: Option<String>,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub code: Option<String>,
+
+	#[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+	pub extra: Map<String, Value>,
+}
+
+impl MetadataNames {
+	pub fn from_raw(raw: &Map<String, Value>) -> Self {
+		let mut extra = raw.clone();
+		let netplay = take_string(&mut extra, "netplay");
+		let code = take_string(&mut extra, "code");
+		MetadataNames {
+			netplay,
+			code,
+			extra,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetadataPlayer {
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub characters: BTreeMap<u8, u32>,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub names: Option<MetadataNames>,
+
+	#[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+	pub extra: Map<String, Value>,
+}
+
+impl MetadataPlayer {
+	pub fn from_raw(raw: &Map<String, Value>) -> Self {
+		let mut extra = raw.clone();
+		let mut characters = BTreeMap::new();
+		if let Some(raw_characters) = raw.get("characters").and_then(Value::as_object) {
+			let mut characters_extra = raw_characters.clone();
+			for (character, frame_count) in raw_characters {
+				let Ok(character) = character.parse::<u8>() else {
+					continue;
+				};
+				let Some(frame_count) = frame_count.as_u64().and_then(|value| u32::try_from(value).ok()) else {
+					continue;
+				};
+				characters.insert(character, frame_count);
+				characters_extra.remove(character.to_string().as_str());
+			}
+
+			if characters_extra.is_empty() {
+				extra.remove("characters");
+			} else {
+				extra.insert("characters".to_string(), Value::Object(characters_extra));
+			}
+		}
+
+		let names = raw
+			.get("names")
+			.and_then(Value::as_object)
+			.map(MetadataNames::from_raw);
+		if names.is_some() {
+			extra.remove("names");
+		}
+
+		MetadataPlayer {
+			characters,
+			names,
+			extra,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Metadata {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub start_at: Option<String>,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub played_on: Option<MetadataPlatform>,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub last_frame: Option<i32>,
+
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub players: BTreeMap<u8, MetadataPlayer>,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub console_nick: Option<String>,
+
+	#[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+	pub extra: Map<String, Value>,
+}
+
+impl Metadata {
+	pub fn from_raw(raw: &Map<String, Value>) -> Self {
+		let mut extra = raw.clone();
+		let start_at = take_string(&mut extra, "startAt");
+		let played_on = take_platform(&mut extra, "playedOn");
+		let last_frame = take_i32(&mut extra, "lastFrame");
+		let console_nick = take_string(&mut extra, "consoleNick");
+
+		let mut players = BTreeMap::new();
+		if let Some(raw_players) = raw.get("players").and_then(Value::as_object) {
+			let mut players_extra = raw_players.clone();
+			for (player_index, player_value) in raw_players {
+				let Ok(player_index) = player_index.parse::<u8>() else {
+					continue;
+				};
+				let Some(player_obj) = player_value.as_object() else {
+					continue;
+				};
+				players.insert(player_index, MetadataPlayer::from_raw(player_obj));
+				players_extra.remove(player_index.to_string().as_str());
+			}
+
+			if players_extra.is_empty() {
+				extra.remove("players");
+			} else {
+				extra.insert("players".to_string(), Value::Object(players_extra));
+			}
+		}
+
+		Metadata {
+			start_at,
+			played_on,
+			last_frame,
+			players,
+			console_nick,
+			extra,
+		}
+	}
+
+	pub fn to_raw(&self) -> Map<String, Value> {
+		serde_json::to_value(self)
+			.ok()
+			.and_then(|value| value.as_object().cloned())
+			.unwrap_or_default()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.start_at.is_none()
+			&& self.played_on.is_none()
+			&& self.last_frame.is_none()
+			&& self.players.is_empty()
+			&& self.console_nick.is_none()
+			&& self.extra.is_empty()
+	}
+}
+
+fn take_string(extra: &mut Map<String, Value>, key: &str) -> Option<String> {
+	extra
+		.get(key)
+		.and_then(Value::as_str)
+		.map(String::from)
+		.inspect(|_| {
+			extra.remove(key);
+		})
+}
+
+fn take_i32(extra: &mut Map<String, Value>, key: &str) -> Option<i32> {
+	extra
+		.get(key)
+		.and_then(Value::as_i64)
+		.and_then(|value| i32::try_from(value).ok())
+		.inspect(|_| {
+			extra.remove(key);
+		})
+}
+
+fn take_platform(extra: &mut Map<String, Value>, key: &str) -> Option<MetadataPlatform> {
+	extra
+		.get(key)
+		.and_then(Value::as_str)
+		.and_then(|value| match value {
+			"dolphin" => Some(MetadataPlatform::Dolphin),
+			"network" => Some(MetadataPlatform::Network),
+			"nintendont" => Some(MetadataPlatform::Nintendont),
+			_ => None,
+		})
+		.inspect(|_| {
+			extra.remove(key);
+		})
+}
+
 /// Information about each player such as character, team, stock count, etc.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Player {
@@ -190,6 +391,10 @@ pub struct Player {
 	/// netplay info (added: v3.9)
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub netplay: Option<Netplay>,
+
+	/// Slippi user id (same source bytes as SUID when present)
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub user_id: Option<String>,
 }
 
 /// Major & minor scene numbers.
@@ -296,6 +501,10 @@ pub struct Start {
 	/// (added: v3.14)
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub r#match: Option<Match>,
+
+	/// Convenience alias for the modern Slippi session / match id.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub session_id: Option<String>,
 }
 
 /// How the game ended.
@@ -358,7 +567,7 @@ pub struct GeckoCodes {
 pub trait Game {
 	fn start(&self) -> &Start;
 	fn end(&self) -> &Option<End>;
-	fn metadata(&self) -> &Option<Map<String, Value>>;
+	fn metadata(&self) -> &Option<Metadata>;
 	fn gecko_codes(&self) -> &Option<GeckoCodes>;
 
 	/// Duration of the game in frames.

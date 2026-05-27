@@ -68,7 +68,7 @@ pub struct PartialGame {
 	pub start: game::Start,
 	pub end: Option<game::End>,
 	pub frames: MutableFrame,
-	pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
+	pub metadata: Option<game::Metadata>,
 	pub gecko_codes: Option<game::GeckoCodes>,
 	pub hash: Option<String>,
 	pub quirks: Option<Quirks>,
@@ -107,7 +107,7 @@ impl game::Game for ParseState {
 		&self.game.end
 	}
 
-	fn metadata(&self) -> &Option<serde_json::Map<String, serde_json::Value>> {
+	fn metadata(&self) -> &Option<game::Metadata> {
 		&self.game.metadata
 	}
 
@@ -266,6 +266,7 @@ fn player(
 			})
 		})
 		.transpose()?;
+	let user_id = netplay.as_ref().and_then(|netplay| netplay.suid.clone());
 
 	Ok(r#type.map(|r#type| Player {
 		port,
@@ -288,6 +289,7 @@ fn player(
 		name_tag,
 		// v3.9
 		netplay,
+		user_id,
 	}))
 }
 
@@ -420,6 +422,7 @@ pub(crate) fn game_start(r: &mut &[u8]) -> Result<game::Start> {
 	} else {
 		None
 	};
+	let session_id = r#match.as_ref().map(|match_info| match_info.id.clone());
 
 	let players = (0..NUM_PORTS)
 		.filter_map(|n| {
@@ -460,6 +463,7 @@ pub(crate) fn game_start(r: &mut &[u8]) -> Result<game::Start> {
 		// v3.12
 		language,
 		r#match,
+		session_id,
 	})
 }
 
@@ -972,7 +976,7 @@ pub fn parse_metadata<R: Read>(
 	// we know it's a map. `parse_map` will consume the corresponding "}".
 	let metadata = ubjson::read_map(&mut r)?;
 	info!("Metadata: {}", serde_json::to_string(&metadata)?);
-	state.game.metadata = Some(metadata);
+	state.game.metadata = Some(game::Metadata::from_raw(&metadata));
 	Ok(())
 }
 

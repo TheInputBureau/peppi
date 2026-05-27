@@ -432,10 +432,11 @@ pub fn write<W: Write>(w: &mut W, game: &Game) -> Result<()> {
 	}
 
 	if let Some(metadata) = &game.metadata {
+		let metadata = metadata.to_raw();
 		w.write_all(&[
 			0x55, 0x08, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x7b,
 		])?;
-		ubjson::write_map(w, metadata)?;
+		ubjson::write_map(w, &metadata)?;
 		w.write_all(&[0x7d])?; // closing brace for `metadata`
 	}
 

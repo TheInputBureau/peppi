@@ -124,8 +124,9 @@ pub fn read<R: Read>(r: R, opts: Option<&Opts>) -> Result<Game> {
 	}
 
 	let peppi = peppi.ok_or(err!("missing peppi"))?;
+	let metadata = metadata.as_ref().map(crate::game::Metadata::from_raw);
 	Ok(Game {
-		metadata: metadata,
+		metadata,
 		start: start.ok_or(err!("missing start"))?,
 		end: end,
 		gecko_codes: gecko_codes,

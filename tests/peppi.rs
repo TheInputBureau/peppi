@@ -52,7 +52,7 @@ fn slippi_old_version() {
 
 	assert_eq!(game.start.slippi.version, Version(0, 1, 0));
 	assert_eq!(
-		serde_json::Value::Object(game.metadata.unwrap()),
+		serde_json::to_value(game.metadata.unwrap().to_raw()).unwrap(),
 		json!({
 			"startAt": "2018-01-24T06:19:54Z",
 			"playedOn": "dolphin"
@@ -69,7 +69,7 @@ fn basic_game() {
 	let game = game("game");
 
 	assert_eq!(
-		serde_json::Value::Object(game.metadata.unwrap()),
+		serde_json::to_value(game.metadata.unwrap().to_raw()).unwrap(),
 		json!({
 			"startAt": "2018-06-22T07:52:59Z",
 			"lastFrame": 5085,
@@ -126,6 +126,7 @@ fn basic_game() {
 					}),
 					name_tag: None,
 					netplay: None,
+					user_id: None,
 				},
 				Player {
 					port: Port::P2,
@@ -148,6 +149,7 @@ fn basic_game() {
 					}),
 					name_tag: None,
 					netplay: None,
+					user_id: None,
 				},
 			],
 			random_seed: 3803194226,
@@ -156,6 +158,7 @@ fn basic_game() {
 			scene: None,
 			language: None,
 			r#match: None,
+			session_id: None,
 			bytes: Bytes(vec![
 				1, 0, 0, 0, 50, 1, 134, 76, 195, 0, 0, 0, 0, 0, 0, 255, 255, 110, 0, 8, 0, 0, 1,
 				224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0,
@@ -301,7 +304,7 @@ fn skip_frames() {
 fn ics() {
 	let game = game("ics");
 	assert_eq!(
-		game.metadata.unwrap()["players"],
+		game.metadata.unwrap().to_raw()["players"],
 		json!({
 			"1": {
 				"characters": {
@@ -480,7 +483,7 @@ fn joystick_udlr() {
 fn nintendont() {
 	let game = game("nintendont");
 	assert_eq!(
-		game.metadata.unwrap()["playedOn"],
+		game.metadata.unwrap().to_raw()["playedOn"],
 		serde_json::Value::String("nintendont".to_string())
 	);
 }
@@ -489,7 +492,7 @@ fn nintendont() {
 fn netplay() {
 	let game = game("netplay");
 	assert_eq!(
-		game.metadata.unwrap()["players"],
+		game.metadata.unwrap().to_raw()["players"],
 		json!({
 			"0": {
 				"names": {
@@ -517,7 +520,7 @@ fn netplay() {
 fn console_name() {
 	let game = game("console_name");
 	assert_eq!(
-		game.metadata.unwrap()["consoleNick"],
+		game.metadata.unwrap().to_raw()["consoleNick"],
 		serde_json::Value::String("Station 1".to_string())
 	)
 }
@@ -572,7 +575,8 @@ fn v3_12() {
 						name: MeleeString("xxxxxx".to_string()),
 						code: MeleeString("XX＃111".to_string()),
 						suid: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string())
-					})
+					}),
+					user_id: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string())
 				},
 				Player {
 					port: Port::P2,
@@ -598,7 +602,8 @@ fn v3_12() {
 						name: MeleeString("yyyyyyyyyy".to_string()),
 						code: MeleeString("YYYY＃222".to_string()),
 						suid: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string())
-					})
+					}),
+					user_id: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string())
 				}
 			],
 			random_seed: 39656,
@@ -607,6 +612,7 @@ fn v3_12() {
 			scene: Some(Scene { minor: 2, major: 8 }),
 			language: Some(Language::English),
 			r#match: None,
+			session_id: None,
 			bytes: Bytes(vec![
 				3, 12, 0, 0, 50, 1, 142, 76, 195, 0, 0, 0, 0, 0, 0, 255, 255, 110, 0, 3, 0, 0, 1,
 				224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0,
@@ -675,6 +681,10 @@ fn v3_14() {
 			game: 1,
 			tiebreaker: 0
 		})
+	);
+	assert_eq!(
+		game.start.session_id.as_deref(),
+		Some("mode.unranked-2024-02-15T14:37:23.22-0")
 	)
 }
 
