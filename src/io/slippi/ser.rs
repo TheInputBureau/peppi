@@ -54,7 +54,7 @@ impl PayloadSizes {
 fn game_end_count(game: &Game) -> Result<u32> {
 	match (
 		game.end.is_some(),
-		game.quirks.map_or(false, |q| q.double_game_end),
+		game.quirks.is_some_and(|q| q.double_game_end),
 	) {
 		(false, false) => Ok(0),
 		(true, false) => Ok(1),
@@ -65,7 +65,7 @@ fn game_end_count(game: &Game) -> Result<u32> {
 
 fn payload_sizes(game: &Game) -> PayloadSizes {
 	let mut sizes = PayloadSizes::new();
-	let ver = game.start.slippi.version.clone();
+	let ver = game.start.slippi.version;
 
 	const FRAME_NUMBER: usize = std::mem::size_of::<i32>();
 	const PORT: usize = 2 * std::mem::size_of::<u8>(); // port number + is_follower
@@ -130,7 +130,7 @@ fn bool(b: bool) -> u8 {
 }
 
 fn player(start: &game::Start, port: usize) -> Option<&Player> {
-	if let Some(port) = Port::try_from(port as u8).ok() {
+	if let Ok(port) = Port::try_from(port as u8) {
 		start.players.iter().find(|p| p.port == port)
 	} else {
 		None
@@ -219,7 +219,7 @@ fn _game_start(s: &game::Start) -> Result<Vec<u8>> {
 		for n in 0..NUM_PORTS {
 			if let Some(p) = player(s, n) {
 				let name_tag = p.name_tag.as_ref().unwrap().bytes();
-				b.write_all(&name_tag.to_owned())?; // 0x10n + 0x161
+				b.write_all(&name_tag)?; // 0x10n + 0x161
 				b.write_all(&vec![0; 16 - name_tag.len()])?;
 			} else {
 				b = &mut b[16..];
@@ -255,7 +255,7 @@ fn _game_start(s: &game::Start) -> Result<Vec<u8>> {
 				if bytes.len() > 30 {
 					return Err(err!("netplay name must be no more than 30 bytes"));
 				}
-				b.write_all(&bytes.to_owned())?;
+				b.write_all(&bytes)?;
 				b.write_all(&vec![0; 31 - bytes.len()])?;
 			} else {
 				b = &mut b[31..];
@@ -268,7 +268,7 @@ fn _game_start(s: &game::Start) -> Result<Vec<u8>> {
 				if bytes.len() > 9 {
 					return Err(err!("netplay code must be no more than 9 bytes"));
 				}
-				b.write_all(&bytes.to_owned())?;
+				b.write_all(&bytes)?;
 				b.write_all(&vec![0; 10 - bytes.len()])?;
 			} else {
 				b = &mut b[10..];
@@ -291,7 +291,7 @@ fn _game_start(s: &game::Start) -> Result<Vec<u8>> {
 				if bytes.len() > 28 {
 					return Err(err!("netplay SUID must be no more than 28 bytes"));
 				}
-				b.write_all(&bytes)?;
+				b.write_all(bytes)?;
 				b.write_all(&vec![0; 29 - bytes.len()])?;
 			} else {
 				b = &mut b[29..];
@@ -309,7 +309,7 @@ fn _game_start(s: &game::Start) -> Result<Vec<u8>> {
 		if bytes.len() > 50 {
 			return Err(err!("match ID must be no more than 50 bytes"));
 		}
-		b.write_all(&bytes)?;
+		b.write_all(bytes)?;
 		b.write_u8(0)?; // null terminator
 		b = &mut b[(50 - bytes.len())..];
 		b.write_u32::<BE>(m.game)?;
@@ -426,7 +426,7 @@ pub fn write<W: Write>(w: &mut W, game: &Game) -> Result<()> {
 
 	if let Some(end) = &game.end {
 		game_end(w, end, ver)?;
-		if game.quirks.map_or(false, |q| q.double_game_end) {
+		if game.quirks.is_some_and(|q| q.double_game_end) {
 			game_end(w, end, ver)?;
 		}
 	}

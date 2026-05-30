@@ -77,7 +77,7 @@ fn read_peppi_gecko_codes<R: Read>(mut r: R) -> Result<game::GeckoCodes> {
 	r.read_to_end(&mut bytes)?;
 	Ok(game::GeckoCodes {
 		actual_size: u32::from_le_bytes(actual_size),
-		bytes: bytes,
+		bytes,
 	})
 }
 
@@ -109,7 +109,7 @@ pub fn read<R: Read>(r: R, opts: Option<&Opts>) -> Result<Game> {
 					.as_ref()
 					.map(|s| s.slippi.version)
 					.ok_or(err!("no start"))?;
-				frames = Some(match opts.map_or(false, |o| o.skip_frames) {
+				frames = Some(match opts.is_some_and(|o| o.skip_frames) {
 					true => {
 						let start = start.as_ref().ok_or(err!("missing start"))?;
 						MutableFrame::with_capacity(0, start.slippi.version, &port_occupancy(start))
@@ -128,8 +128,8 @@ pub fn read<R: Read>(r: R, opts: Option<&Opts>) -> Result<Game> {
 	Ok(Game {
 		metadata,
 		start: start.ok_or(err!("missing start"))?,
-		end: end,
-		gecko_codes: gecko_codes,
+		end,
+		gecko_codes,
 		frames: frames.ok_or(err!("missing frames"))?,
 		hash: peppi.slp_hash,
 		quirks: peppi.quirks,

@@ -24,10 +24,10 @@ impl MeleeString {
 	/// Normalizes the decoded string and returns it.
 	/// Performs the following fixes:
 	/// 1. Map full-width code points to their half-width equivalents
-	/// <https://en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)>
+	///    <https://en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)>
 	/// 2. Change ideographic space (U+3000) to ascii space
 	/// 3. Change Right Single/Double Quotation Mark (U+2019/U+201D) to their
-	/// ascii equivalents
+	///    ascii equivalents
 	pub fn to_normalized(&self) -> String {
 		self.0.clone().chars().map(fix_char).collect::<String>()
 	}

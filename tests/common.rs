@@ -14,7 +14,7 @@ pub fn read_game(path: impl AsRef<Path>, skip_frames: bool) -> Result<Game> {
 	slippi::read(
 		&mut buf,
 		Some(&slippi::de::Opts {
-			skip_frames: skip_frames,
+			skip_frames,
 			..Default::default()
 		}),
 	)

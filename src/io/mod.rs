@@ -62,7 +62,11 @@ impl<R: Read> HashingReader<R> {
 impl<R: Read> Read for HashingReader<R> {
 	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
 		let n = self.reader.read(buf)?;
-		self.hasher.as_mut().map(|h| h.update(&buf[..n]));
+
+		if let Some(h) = self.hasher.as_mut() {
+			h.update(&buf[..n])
+		}
+
 		Ok(n)
 	}
 }

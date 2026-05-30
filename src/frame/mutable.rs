@@ -44,6 +44,11 @@ impl Data {
 		self.pre.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.pre.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -83,6 +88,11 @@ impl PortData {
 
 	pub fn len(&self) -> usize {
 		self.leader.len()
+	}
+
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.leader.is_empty()
 	}
 
 	pub fn transpose_one(&self, i: usize, version: Version) -> transpose::PortData {
@@ -178,6 +188,11 @@ impl Frame {
 		self.id.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn transpose_one(&self, i: usize, version: Version) -> transpose::Frame {
 		transpose::Frame {
 			id: self.id.values()[i],
@@ -240,7 +255,6 @@ impl Frame {
 }
 
 /// This event only occurs on Dreamland 64, and is sent whenever Whispy changes blow directions.
-
 pub struct DreamlandWhispy {
 	/// Which direction Whispy is blowing (0 = None, 1 = Left, 2 = Right)
 	pub direction: MutablePrimitiveArray<u8>,
@@ -260,6 +274,11 @@ impl DreamlandWhispy {
 		self.direction.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -270,7 +289,9 @@ impl DreamlandWhispy {
 
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_u8().map(|x| self.direction.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
 		Ok(())
 	}
 
@@ -282,7 +303,6 @@ impl DreamlandWhispy {
 }
 
 /// Information about the end of the game.
-
 pub struct End {
 	/// *Added: v3.7* Index of the latest frame which is guaranteed not to happen again (rollback)
 	pub latest_finalized_frame: Option<MutablePrimitiveArray<i32>>,
@@ -309,6 +329,11 @@ impl End {
 			.unwrap_or_else(|| self.latest_finalized_frame.as_ref().unwrap().len())
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -324,7 +349,11 @@ impl End {
 			r.read_i32::<BE>()
 				.map(|x| self.latest_finalized_frame.as_mut().unwrap().push(Some(x)))?
 		};
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -336,7 +365,6 @@ impl End {
 }
 
 /// This event only occurs on Fountain of Dreams, and is sent for each change in platform height. If both platforms are moving, there will be two events per frame.
-
 pub struct FodPlatform {
 	/// Which platform has moved. (0 = Right, 1 = Left)
 	pub platform: MutablePrimitiveArray<u8>,
@@ -359,6 +387,11 @@ impl FodPlatform {
 		self.platform.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.platform.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -371,7 +404,11 @@ impl FodPlatform {
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_u8().map(|x| self.platform.push(Some(x)))?;
 		r.read_f32::<BE>().map(|x| self.height.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -384,7 +421,6 @@ impl FodPlatform {
 }
 
 /// An active item (includes projectiles).
-
 pub struct Item {
 	/// Item type
 	pub r#type: MutablePrimitiveArray<u16>,
@@ -440,6 +476,11 @@ impl Item {
 		self.r#type.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.r#type.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -484,7 +525,11 @@ impl Item {
 				}
 			}
 		};
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -506,7 +551,6 @@ impl Item {
 }
 
 /// Miscellaneous item state.
-
 pub struct ItemMisc(
 	pub MutablePrimitiveArray<u8>,
 	pub MutablePrimitiveArray<u8>,
@@ -526,6 +570,11 @@ impl ItemMisc {
 
 	pub fn len(&self) -> usize {
 		self.0.len()
+	}
+
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
 	}
 
 	pub fn push_null(&mut self, version: Version) {
@@ -554,7 +603,6 @@ impl ItemMisc {
 }
 
 /// 2D position.
-
 pub struct Position {
 	pub x: MutablePrimitiveArray<f32>,
 	pub y: MutablePrimitiveArray<f32>,
@@ -575,6 +623,11 @@ impl Position {
 		self.x.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.x.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -587,7 +640,11 @@ impl Position {
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_f32::<BE>().map(|x| self.x.push(Some(x)))?;
 		r.read_f32::<BE>().map(|x| self.y.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -602,7 +659,6 @@ impl Position {
 /// Post-frame update data, for making decisions about game states (such as computing stats).
 ///
 /// Information is collected at the end of collision detection, which is the last consideration of the game engine.
-
 pub struct Post {
 	/// In-game character (can only change for Zelda/Sheik)
 	pub character: MutablePrimitiveArray<u8>,
@@ -714,6 +770,11 @@ impl Post {
 		self.character.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.character.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -809,7 +870,11 @@ impl Post {
 				}
 			}
 		};
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -851,7 +916,6 @@ impl Post {
 /// Pre-frame update data, required to reconstruct a replay.
 ///
 /// Information is collected right before controller inputs are used to figure out the character’s next action.
-
 pub struct Pre {
 	/// Random seed
 	pub random_seed: MutablePrimitiveArray<u32>,
@@ -923,6 +987,10 @@ impl Pre {
 		self.random_seed.len()
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -989,15 +1057,18 @@ impl Pre {
 						if r.is_empty() {
 							self.raw_analog_cstick_y.as_mut().unwrap().push_null();
 						} else {
-							r.read_i8().map(|x| {
-								self.raw_analog_cstick_y.as_mut().unwrap().push(Some(x))
-							})?
+							r.read_i8()
+								.map(|x| self.raw_analog_cstick_y.as_mut().unwrap().push(Some(x)))?
 						}
 					}
 				}
 			}
 		};
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -1023,7 +1094,6 @@ impl Pre {
 }
 
 /// This event only occurs on Pokemon Stadium, and is sent whenever the transformation event or transformation type changes.
-
 pub struct StadiumTransformation {
 	/// The subevent for each transformation. (2 = Initialize, 3 = On monitor, 4 = Previous transformation receding, 5 = New transformation rising, 6 = Finalize, 0 = Finished)
 	pub event: MutablePrimitiveArray<u16>,
@@ -1046,6 +1116,11 @@ impl StadiumTransformation {
 		self.event.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.event.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -1058,7 +1133,11 @@ impl StadiumTransformation {
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_u16::<BE>().map(|x| self.event.push(Some(x)))?;
 		r.read_u16::<BE>().map(|x| self.r#type.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -1071,7 +1150,6 @@ impl StadiumTransformation {
 }
 
 /// Initialization data such as game mode, settings, characters & stage.
-
 pub struct Start {
 	/// Random seed
 	pub random_seed: MutablePrimitiveArray<u32>,
@@ -1096,6 +1174,11 @@ impl Start {
 		self.random_seed.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.random_seed.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -1113,7 +1196,11 @@ impl Start {
 			r.read_u32::<BE>()
 				.map(|x| self.scene_frame_counter.as_mut().unwrap().push(Some(x)))?
 		};
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -1126,7 +1213,6 @@ impl Start {
 }
 
 /// Miscellaneous state flags.
-
 pub struct StateFlags(
 	pub MutablePrimitiveArray<u8>,
 	pub MutablePrimitiveArray<u8>,
@@ -1148,6 +1234,11 @@ impl StateFlags {
 
 	pub fn len(&self) -> usize {
 		self.0.len()
+	}
+
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
 	}
 
 	pub fn push_null(&mut self, version: Version) {
@@ -1179,7 +1270,6 @@ impl StateFlags {
 }
 
 /// Trigger state.
-
 pub struct TriggersPhysical {
 	pub l: MutablePrimitiveArray<f32>,
 	pub r: MutablePrimitiveArray<f32>,
@@ -1200,6 +1290,11 @@ impl TriggersPhysical {
 		self.l.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.l.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -1212,7 +1307,11 @@ impl TriggersPhysical {
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_f32::<BE>().map(|x| self.l.push(Some(x)))?;
 		r.read_f32::<BE>().map(|x| self.r.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -1225,7 +1324,6 @@ impl TriggersPhysical {
 }
 
 /// Self-induced and knockback velocities.
-
 pub struct Velocities {
 	/// Self-induced x-velocity (airborne)
 	pub self_x_air: MutablePrimitiveArray<f32>,
@@ -1257,6 +1355,11 @@ impl Velocities {
 		self.self_x_air.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.self_x_air.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -1276,7 +1379,11 @@ impl Velocities {
 		r.read_f32::<BE>().map(|x| self.knockback_y.push(Some(x)))?;
 		r.read_f32::<BE>()
 			.map(|x| self.self_x_ground.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 
@@ -1292,7 +1399,6 @@ impl Velocities {
 }
 
 /// 2D velocity.
-
 pub struct Velocity {
 	pub x: MutablePrimitiveArray<f32>,
 	pub y: MutablePrimitiveArray<f32>,
@@ -1313,6 +1419,11 @@ impl Velocity {
 		self.x.len()
 	}
 
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.x.is_empty()
+	}
+
 	pub fn push_null(&mut self, version: Version) {
 		let len = self.len();
 		self.validity
@@ -1325,7 +1436,11 @@ impl Velocity {
 	pub fn read_push(&mut self, r: &mut &[u8], version: Version) -> Result<()> {
 		r.read_f32::<BE>().map(|x| self.x.push(Some(x)))?;
 		r.read_f32::<BE>().map(|x| self.y.push(Some(x)))?;
-		self.validity.as_mut().map(|v| v.push(true));
+
+		if let Some(v) = self.validity.as_mut() {
+			v.push(true)
+		}
+
 		Ok(())
 	}
 

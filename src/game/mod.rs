@@ -46,8 +46,10 @@ pub const ICE_CLIMBERS: u8 = 14;
 	Deserialize,
 	IntoPrimitive,
 	TryFromPrimitive,
+	Default,
 )]
 pub enum Port {
+	#[default]
 	P1 = 0,
 	P2 = 1,
 	P3 = 2,
@@ -75,12 +77,6 @@ impl Display for Port {
 			P3 => write!(f, "P3"),
 			P4 => write!(f, "P4"),
 		}
-	}
-}
-
-impl Default for Port {
-	fn default() -> Self {
-		Self::P1
 	}
 }
 
@@ -198,7 +194,10 @@ impl MetadataPlayer {
 				let Ok(character) = character.parse::<u8>() else {
 					continue;
 				};
-				let Some(frame_count) = frame_count.as_u64().and_then(|value| u32::try_from(value).ok()) else {
+				let Some(frame_count) = frame_count
+					.as_u64()
+					.and_then(|value| u32::try_from(value).ok())
+				else {
 					continue;
 				};
 				characters.insert(character, frame_count);
@@ -572,6 +571,9 @@ pub trait Game {
 
 	/// Duration of the game in frames.
 	fn len(&self) -> usize;
+	fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 
 	/// Combines all data for a single frame into a struct.
 	/// Avoid calling this if you need maximum performance.

@@ -136,7 +136,7 @@ impl ParseState {
 	}
 
 	fn last_id(&self) -> Option<i32> {
-		self.game.frames.id.values().last().map(|id| *id)
+		self.game.frames.id.values().last().copied()
 	}
 
 	fn frame_open(&mut self, id: i32) {
@@ -299,7 +299,10 @@ fn player_bytes<const N: usize, const M: usize>(r: &mut &[u8]) -> Result<[[u8; N
 	Ok(arrs)
 }
 
-fn player_bytes_at<const N: usize, const M: usize>(bytes: &[u8], start: usize) -> Option<[[u8; N]; M]> {
+fn player_bytes_at<const N: usize, const M: usize>(
+	bytes: &[u8],
+	start: usize,
+) -> Option<[[u8; N]; M]> {
 	let total_len = N.checked_mul(M)?;
 	let end = start.checked_add(total_len)?;
 	if end > bytes.len() {
@@ -497,9 +500,7 @@ pub(crate) fn game_end(r: &mut &[u8]) -> Result<game::End> {
 	let players = if_more(r, |r| {
 		let placements = [r.read_i8()?, r.read_i8()?, r.read_i8()?, r.read_i8()?];
 		(0..NUM_PORTS)
-			.filter_map(|n| {
-				player_end(Port::try_from(n as u8).unwrap(), placements[n as usize]).transpose()
-			})
+			.filter_map(|n| player_end(Port::try_from(n as u8).unwrap(), placements[n]).transpose())
 			.collect()
 	})?;
 
@@ -569,8 +570,8 @@ fn parse_payloads<R: Read>(mut r: R, opts: Option<&Opts>) -> Result<(usize, Payl
 	r.read_exact(&mut buf)?;
 	let buf = &mut &buf[..];
 
-	if let Some(ref d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
-		debug_write_event(&buf, code, None, d)?;
+	if let Some(d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
+		debug_write_event(buf, code, None, d)?;
 	}
 
 	let mut sizes: PayloadSizes = [None; 256];
@@ -618,7 +619,7 @@ fn parse_game_start<R: Read>(
 	let mut buf = vec![0; size];
 	r.read_exact(&mut buf)?;
 
-	if let Some(ref d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
+	if let Some(d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
 		debug_write_event(&buf, code, None, d)?;
 	}
 
@@ -643,7 +644,7 @@ pub fn parse_start<R: Read>(mut r: R, opts: Option<&Opts>) -> Result<ParseState>
 
 	let ports = port_occupancy(&start);
 	let version = start.slippi.version;
-	let capacity = match opts.map_or(false, |o| o.skip_frames) {
+	let capacity = match opts.is_some_and(|o| o.skip_frames) {
 		true => 0,
 		false => 1024,
 	};
@@ -686,7 +687,7 @@ pub fn parse_start<R: Read>(mut r: R, opts: Option<&Opts>) -> Result<ParseState>
 	})
 }
 
-fn push_offset<T>(offsets: &mut Option<Offsets<i32>>, new_len: i32) {
+fn push_offset(offsets: &mut Option<Offsets<i32>>, new_len: i32) {
 	let old_len = *offsets.as_ref().unwrap().last();
 	offsets
 		.as_mut()
@@ -720,15 +721,15 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 	let mut buf = vec![0; size];
 	r.read_exact(&mut buf)?;
 
-	if code == Event::MessageSplitter as u8 {
-		if let Some(wrapped_event) = handle_splitter_event(&buf, &mut state.split_accumulator)? {
-			code = wrapped_event;
-			buf.clear();
-			buf.append(&mut state.split_accumulator.raw);
-		}
+	if code == Event::MessageSplitter as u8
+		&& let Some(wrapped_event) = handle_splitter_event(&buf, &mut state.split_accumulator)?
+	{
+		code = wrapped_event;
+		buf.clear();
+		buf.append(&mut state.split_accumulator.raw);
 	};
 
-	if let Some(ref d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
+	if let Some(d) = opts.as_ref().and_then(|o| o.debug.as_ref()) {
 		debug_write_event(&buf, code, Some(state), d)?;
 	}
 
@@ -784,13 +785,16 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 				}
 				let port_index = state.port_indexes[port as usize];
 				if is_follower {
-					state.game.frames.ports[port_index]
+					if let Some(v) = state.game.frames.ports[port_index]
 						.follower
 						.as_mut()
 						.unwrap()
 						.validity
 						.as_mut()
-						.map(|v| v.push(true));
+					{
+						v.push(true)
+					}
+
 					state.game.frames.ports[port_index]
 						.follower
 						.as_mut()
@@ -798,11 +802,10 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 						.pre
 						.read_push(r, state.game.start.slippi.version)?;
 				} else {
-					state.game.frames.ports[port_index]
-						.leader
-						.validity
-						.as_mut()
-						.map(|v| v.push(true));
+					if let Some(v) = state.game.frames.ports[port_index].leader.validity.as_mut() {
+						v.push(true)
+					}
+
 					state.game.frames.ports[port_index]
 						.leader
 						.pre
@@ -834,7 +837,7 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 				let id = r.read_i32::<BE>()?;
 				trace!("Frame end: {}", id);
 				assert_eq!(id, state.last_id().unwrap());
-				push_offset::<u32>(
+				push_offset(
 					&mut state.game.frames.item_offset,
 					state
 						.game
@@ -848,7 +851,7 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 						.unwrap(),
 				);
 				if state.game.frames.fod_platform_offset.is_some() {
-					push_offset::<u8>(
+					push_offset(
 						&mut state.game.frames.fod_platform_offset,
 						state
 							.game
@@ -863,7 +866,7 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 					);
 				}
 				if state.game.frames.dreamland_whispy_offset.is_some() {
-					push_offset::<u8>(
+					push_offset(
 						&mut state.game.frames.dreamland_whispy_offset,
 						state
 							.game
@@ -878,7 +881,7 @@ pub fn parse_event<R: Read>(mut r: R, state: &mut ParseState, opts: Option<&Opts
 					);
 				}
 				if state.game.frames.stadium_transformation_offset.is_some() {
-					push_offset::<u16>(
+					push_offset(
 						&mut state.game.frames.stadium_transformation_offset,
 						state
 							.game
@@ -982,7 +985,7 @@ pub fn parse_metadata<R: Read>(
 
 /// Reads a Slippi (`.slp`) replay from `r`.
 pub fn read<R: Read + Seek>(r: R, opts: Option<&Opts>) -> Result<Game> {
-	let hash = opts.map_or(false, |o| o.compute_hash);
+	let hash = opts.is_some_and(|o| o.compute_hash);
 	// Wrap so we can hash all the bytes we've read at the end.
 	let mut r = HashingReader::new(r, hash);
 
@@ -992,7 +995,7 @@ pub fn read<R: Read + Seek>(r: R, opts: Option<&Opts>) -> Result<Game> {
 
 	let mut state = parse_start(&mut r, opts)?;
 
-	if opts.map_or(false, |o| o.skip_frames) {
+	if opts.is_some_and(|o| o.skip_frames) {
 		// Skip to GameEnd, which we assume is the last event in the stream!
 		let end_offset = 1 + state.payload_sizes[Event::GameEnd as usize]
 			.expect("Missing GameEnd in payload sizes")

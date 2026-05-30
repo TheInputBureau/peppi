@@ -106,8 +106,15 @@ pub struct Frame {
 }
 
 impl Frame {
+	#[inline]
 	pub fn len(&self) -> usize {
 		self.id.len()
+	}
+
+	#[must_use]
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 
 	pub fn transpose_one(&self, i: usize, version: Version) -> transpose::Frame {

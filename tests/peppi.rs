@@ -774,7 +774,12 @@ fn v3_18() {
 #[test]
 fn stage_event_fixtures() {
 	let fixtures = [
-		("../slippi-js/slp/stadiumTransformations.slp", 0usize, 0usize, 1usize),
+		(
+			"../slippi-js/slp/stadiumTransformations.slp",
+			0usize,
+			0usize,
+			1usize,
+		),
 		("../slippi-js/slp/FodPlatforms.slp", 1usize, 0usize, 0usize),
 		("../slippi-js/slp/Whispy.slp", 0usize, 1usize, 0usize),
 	];
@@ -793,8 +798,16 @@ fn stage_event_fixtures() {
 			stadium_events += frame.stadium_transformations.as_ref().map_or(0, Vec::len);
 		}
 
-		assert!(fod_events >= expect_fod, "expected FOD events in {}", path.display());
-		assert!(whispy_events >= expect_whispy, "expected Whispy events in {}", path.display());
+		assert!(
+			fod_events >= expect_fod,
+			"expected FOD events in {}",
+			path.display()
+		);
+		assert!(
+			whispy_events >= expect_whispy,
+			"expected Whispy events in {}",
+			path.display()
+		);
 		assert!(
 			stadium_events >= expect_stadium,
 			"expected stadium events in {}",
@@ -811,6 +824,7 @@ fn unknown_event() {
 }
 
 #[test]
+#[allow(clippy::redundant_pattern_matching)]
 fn corrupt_replay() {
 	assert!(matches!(read_game(get_path("corrupt"), false), Err(_)));
 }
@@ -934,11 +948,12 @@ fn _round_trip(in_path: impl AsRef<Path> + Clone) {
 fn round_trip() {
 	for entry in fs::read_dir("tests/data")
 		.unwrap()
-		.into_iter()
 		.map(|e| e.unwrap())
-		.filter(|e| match e.file_name().to_str().unwrap() {
-			"unknown_event.slp" | "corrupt.slp" => false,
-			_ => true,
+		.filter(|e| {
+			!matches!(
+				e.file_name().to_str().unwrap(),
+				"unknown_event.slp" | "corrupt.slp"
+			)
 		}) {
 		println!("{:?}", entry.file_name());
 		_round_trip(entry.path());

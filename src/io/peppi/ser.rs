@@ -89,7 +89,7 @@ pub fn write<W: Write>(w: W, game: Game, opts: Option<&Opts>) -> Result<(), Box<
 			schema,
 			None,
 			WriteOptions {
-				compression: opts.map_or(None, |o| o.compression),
+				compression: opts.and_then(|o| o.compression),
 			},
 		)?;
 		writer.write(&chunk, None)?;

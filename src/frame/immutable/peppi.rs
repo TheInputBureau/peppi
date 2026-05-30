@@ -2,6 +2,8 @@
 
 #![allow(unused_variables)]
 
+use std::ops::Deref;
+
 use arrow2::{
 	array::{Array, ListArray, PrimitiveArray, StructArray},
 	datatypes::{DataType, Field},
@@ -13,7 +15,7 @@ use crate::{
 		PortOccupancy,
 		immutable::{Data, Frame, PortData},
 	},
-	game::{NUM_PORTS, Port},
+	game::Port,
 	io::slippi::Version,
 };
 
@@ -58,7 +60,7 @@ impl Data {
 					.clone(),
 				version,
 			),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -91,9 +93,13 @@ impl PortData {
 	fn from_struct_array(array: StructArray, version: Version, port: Port) -> Self {
 		let (fields, values, _) = array.into_data();
 		assert_eq!("leader", fields[0].name);
-		fields.get(1).map(|f| assert_eq!("follower", f.name));
+
+		if let Some(f) = fields.get(1) {
+			assert_eq!("follower", f.name);
+		}
+
 		Self {
-			port: port,
+			port,
 			leader: Data::from_struct_array(
 				values[0]
 					.as_any()
@@ -277,20 +283,20 @@ impl Frame {
 	fn port_data_from_struct_array(array: StructArray, version: Version) -> Vec<PortData> {
 		let (fields, values, _) = array.into_data();
 		let mut ports = vec![];
-		for i in 0..NUM_PORTS {
-			if let Some(a) = values.get(i as usize) {
-				ports.push(PortData::from_struct_array(
-					a.as_any().downcast_ref::<StructArray>().unwrap().clone(),
-					version,
-					Port::parse(&fields[i as usize].name).unwrap(),
-				));
-			}
+
+		for (i, a) in values.iter().enumerate() {
+			ports.push(PortData::from_struct_array(
+				a.as_any().downcast_ref::<StructArray>().unwrap().clone(),
+				version,
+				Port::parse(&fields[i].name).unwrap(),
+			));
 		}
+
 		ports
 	}
 
 	fn values_and_offsets<T: StructArrayConvertible>(
-		arr: &Box<dyn Array>,
+		arr: &dyn Array,
 		version: Version,
 	) -> (Option<T>, Option<OffsetsBuffer<i32>>) {
 		let arrays = arr
@@ -328,18 +334,20 @@ impl Frame {
 			}
 		}
 
-		let (item, item_offset) = values
-			.get(4)
-			.map_or((None, None), |arr| Frame::values_and_offsets(arr, version));
-		let (fod_platform, fod_platform_offset) = values
-			.get(5)
-			.map_or((None, None), |arr| Frame::values_and_offsets(arr, version));
-		let (dreamland_whispy, dreamland_whispy_offset) = values
-			.get(6)
-			.map_or((None, None), |arr| Frame::values_and_offsets(arr, version));
-		let (stadium_transformation, stadium_transformation_offset) = values
-			.get(7)
-			.map_or((None, None), |arr| Frame::values_and_offsets(arr, version));
+		let (item, item_offset) = values.get(4).map_or((None, None), |arr| {
+			Frame::values_and_offsets(arr.deref(), version)
+		});
+		let (fod_platform, fod_platform_offset) = values.get(5).map_or((None, None), |arr| {
+			Frame::values_and_offsets(arr.deref(), version)
+		});
+		let (dreamland_whispy, dreamland_whispy_offset) =
+			values.get(6).map_or((None, None), |arr| {
+				Frame::values_and_offsets(arr.deref(), version)
+			});
+		let (stadium_transformation, stadium_transformation_offset) =
+			values.get(7).map_or((None, None), |arr| {
+				Frame::values_and_offsets(arr.deref(), version)
+			});
 
 		Self {
 			id: values[0]
@@ -383,16 +391,11 @@ use crate::frame::immutable::DreamlandWhispy;
 
 impl StructArrayConvertible for DreamlandWhispy {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("direction", DataType::UInt8, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![Field::new("direction", DataType::UInt8, false)])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.direction.boxed());
+		let values = vec![self.direction.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -404,7 +407,7 @@ impl StructArrayConvertible for DreamlandWhispy {
 				.downcast_ref::<PrimitiveArray<u8>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -413,19 +416,19 @@ use crate::frame::immutable::End;
 
 impl StructArrayConvertible for End {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			if version.gte(3, 7) {
-				fields.push(Field::new("latest_finalized_frame", DataType::Int32, false))
-			}
+		let fields = if version.gte(3, 7) {
+			vec![Field::new("latest_finalized_frame", DataType::Int32, false)]
+		} else {
+			vec![]
 		};
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		if version.gte(3, 7) {
-			values.push(self.latest_finalized_frame.unwrap().boxed())
+		let values = if version.gte(3, 7) {
+			vec![self.latest_finalized_frame.unwrap().boxed()]
+		} else {
+			vec![]
 		};
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
@@ -433,13 +436,13 @@ impl StructArrayConvertible for End {
 	fn from_struct_array(array: StructArray, version: Version) -> Self {
 		let (_, values, validity) = array.into_data();
 		Self {
-			latest_finalized_frame: values.get(0).map(|x| {
+			latest_finalized_frame: values.first().map(|x| {
 				x.as_any()
 					.downcast_ref::<PrimitiveArray<i32>>()
 					.unwrap()
 					.clone()
 			}),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -448,18 +451,14 @@ use crate::frame::immutable::FodPlatform;
 
 impl StructArrayConvertible for FodPlatform {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("platform", DataType::UInt8, false));
-			fields.push(Field::new("height", DataType::Float32, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("platform", DataType::UInt8, false),
+			Field::new("height", DataType::Float32, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.platform.boxed());
-		values.push(self.height.boxed());
+		let values = vec![self.platform.boxed(), self.height.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -476,7 +475,7 @@ impl StructArrayConvertible for FodPlatform {
 				.downcast_ref::<PrimitiveArray<f32>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -485,39 +484,42 @@ use crate::frame::immutable::Item;
 
 impl StructArrayConvertible for Item {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("type", DataType::UInt16, false));
-			fields.push(Field::new("state", DataType::UInt8, false));
-			fields.push(Field::new("direction", DataType::Float32, false));
-			fields.push(Field::new("velocity", Velocity::data_type(version), false));
-			fields.push(Field::new("position", Position::data_type(version), false));
-			fields.push(Field::new("damage", DataType::UInt16, false));
-			fields.push(Field::new("timer", DataType::Float32, false));
-			fields.push(Field::new("id", DataType::UInt32, false));
-			if version.gte(3, 2) {
-				fields.push(Field::new("misc", ItemMisc::data_type(version), false));
-				if version.gte(3, 6) {
-					fields.push(Field::new("owner", DataType::Int8, false));
-					if version.gte(3, 16) {
-						fields.push(Field::new("instance_id", DataType::UInt16, false))
-					}
+		let mut fields = vec![
+			Field::new("type", DataType::UInt16, false),
+			Field::new("state", DataType::UInt8, false),
+			Field::new("direction", DataType::Float32, false),
+			Field::new("velocity", Velocity::data_type(version), false),
+			Field::new("position", Position::data_type(version), false),
+			Field::new("damage", DataType::UInt16, false),
+			Field::new("timer", DataType::Float32, false),
+			Field::new("id", DataType::UInt32, false),
+		];
+
+		if version.gte(3, 2) {
+			fields.push(Field::new("misc", ItemMisc::data_type(version), false));
+			if version.gte(3, 6) {
+				fields.push(Field::new("owner", DataType::Int8, false));
+				if version.gte(3, 16) {
+					fields.push(Field::new("instance_id", DataType::UInt16, false))
 				}
 			}
-		};
+		}
+
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.r#type.boxed());
-		values.push(self.state.boxed());
-		values.push(self.direction.boxed());
-		values.push(self.velocity.into_struct_array(version).boxed());
-		values.push(self.position.into_struct_array(version).boxed());
-		values.push(self.damage.boxed());
-		values.push(self.timer.boxed());
-		values.push(self.id.boxed());
+		let mut values = vec![
+			self.r#type.boxed(),
+			self.state.boxed(),
+			self.direction.boxed(),
+			self.velocity.into_struct_array(version).boxed(),
+			self.position.into_struct_array(version).boxed(),
+			self.damage.boxed(),
+			self.timer.boxed(),
+			self.id.boxed(),
+		];
+
 		if version.gte(3, 2) {
 			values.push(self.misc.unwrap().into_struct_array(version).boxed());
 			if version.gte(3, 6) {
@@ -527,6 +529,7 @@ impl StructArrayConvertible for Item {
 				}
 			}
 		};
+
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -597,7 +600,7 @@ impl StructArrayConvertible for Item {
 					.unwrap()
 					.clone()
 			}),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -606,22 +609,21 @@ use crate::frame::immutable::ItemMisc;
 
 impl StructArrayConvertible for ItemMisc {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("0", DataType::UInt8, false));
-			fields.push(Field::new("1", DataType::UInt8, false));
-			fields.push(Field::new("2", DataType::UInt8, false));
-			fields.push(Field::new("3", DataType::UInt8, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("0", DataType::UInt8, false),
+			Field::new("1", DataType::UInt8, false),
+			Field::new("2", DataType::UInt8, false),
+			Field::new("3", DataType::UInt8, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.0.boxed());
-		values.push(self.1.boxed());
-		values.push(self.2.boxed());
-		values.push(self.3.boxed());
+		let values = vec![
+			self.0.boxed(),
+			self.1.boxed(),
+			self.2.boxed(),
+			self.3.boxed(),
+		];
 		StructArray::new(Self::data_type(version), values, None)
 	}
 
@@ -656,18 +658,15 @@ use crate::frame::immutable::Position;
 
 impl StructArrayConvertible for Position {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("x", DataType::Float32, false));
-			fields.push(Field::new("y", DataType::Float32, false))
-		};
+		let fields = vec![
+			Field::new("x", DataType::Float32, false),
+			Field::new("y", DataType::Float32, false),
+		];
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.x.boxed());
-		values.push(self.y.boxed());
+		let values = vec![self.x.boxed(), self.y.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -684,7 +683,7 @@ impl StructArrayConvertible for Position {
 				.downcast_ref::<PrimitiveArray<f32>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -693,90 +692,85 @@ use crate::frame::immutable::Post;
 
 impl StructArrayConvertible for Post {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("character", DataType::UInt8, false));
-			fields.push(Field::new("state", DataType::UInt16, false));
-			fields.push(Field::new("position", Position::data_type(version), false));
-			fields.push(Field::new("direction", DataType::Float32, false));
-			fields.push(Field::new("percent", DataType::Float32, false));
-			fields.push(Field::new("shield", DataType::Float32, false));
-			fields.push(Field::new("last_attack_landed", DataType::UInt8, false));
-			fields.push(Field::new("combo_count", DataType::UInt8, false));
-			fields.push(Field::new("last_hit_by", DataType::UInt8, false));
-			fields.push(Field::new("stocks", DataType::UInt8, false));
-			if version.gte(0, 2) {
-				fields.push(Field::new("state_age", DataType::Float32, false));
-				if version.gte(2, 0) {
-					fields.push(Field::new(
-						"state_flags",
-						StateFlags::data_type(version),
-						false,
-					));
-					fields.push(Field::new("misc_as", DataType::Float32, false));
-					fields.push(Field::new("airborne", DataType::UInt8, false));
-					fields.push(Field::new("ground", DataType::UInt16, false));
-					fields.push(Field::new("jumps", DataType::UInt8, false));
-					fields.push(Field::new("l_cancel", DataType::UInt8, false));
-					if version.gte(2, 1) {
-						fields.push(Field::new("hurtbox_state", DataType::UInt8, false));
-						if version.gte(3, 5) {
-							fields.push(Field::new(
-								"velocities",
-								Velocities::data_type(version),
-								false,
-							));
-							if version.gte(3, 8) {
-								fields.push(Field::new("hitlag", DataType::Float32, false));
-								if version.gte(3, 11) {
-									fields.push(Field::new(
-										"animation_index",
-										DataType::UInt32,
-										false,
-									));
-									if version.gte(3, 16) {
-										fields.push(Field::new(
-											"last_hit_by_instance",
-											DataType::UInt16,
-											false,
-										));
-										fields.push(Field::new(
-											"instance_id",
-											DataType::UInt16,
-											false,
-										))
-									}
+		let mut fields = vec![
+			Field::new("character", DataType::UInt8, false),
+			Field::new("state", DataType::UInt16, false),
+			Field::new("position", Position::data_type(version), false),
+			Field::new("direction", DataType::Float32, false),
+			Field::new("percent", DataType::Float32, false),
+			Field::new("shield", DataType::Float32, false),
+			Field::new("last_attack_landed", DataType::UInt8, false),
+			Field::new("combo_count", DataType::UInt8, false),
+			Field::new("last_hit_by", DataType::UInt8, false),
+			Field::new("stocks", DataType::UInt8, false),
+		];
+
+		if version.gte(0, 2) {
+			fields.push(Field::new("state_age", DataType::Float32, false));
+			if version.gte(2, 0) {
+				fields.extend([
+					Field::new("state_flags", StateFlags::data_type(version), false),
+					Field::new("misc_as", DataType::Float32, false),
+					Field::new("airborne", DataType::UInt8, false),
+					Field::new("ground", DataType::UInt16, false),
+					Field::new("jumps", DataType::UInt8, false),
+					Field::new("l_cancel", DataType::UInt8, false),
+				]);
+
+				if version.gte(2, 1) {
+					fields.push(Field::new("hurtbox_state", DataType::UInt8, false));
+					if version.gte(3, 5) {
+						fields.push(Field::new(
+							"velocities",
+							Velocities::data_type(version),
+							false,
+						));
+						if version.gte(3, 8) {
+							fields.push(Field::new("hitlag", DataType::Float32, false));
+							if version.gte(3, 11) {
+								fields.push(Field::new("animation_index", DataType::UInt32, false));
+								if version.gte(3, 16) {
+									fields.extend([
+										Field::new("last_hit_by_instance", DataType::UInt16, false),
+										Field::new("instance_id", DataType::UInt16, false),
+									])
 								}
 							}
 						}
 					}
 				}
 			}
-		};
+		}
+
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.character.boxed());
-		values.push(self.state.boxed());
-		values.push(self.position.into_struct_array(version).boxed());
-		values.push(self.direction.boxed());
-		values.push(self.percent.boxed());
-		values.push(self.shield.boxed());
-		values.push(self.last_attack_landed.boxed());
-		values.push(self.combo_count.boxed());
-		values.push(self.last_hit_by.boxed());
-		values.push(self.stocks.boxed());
+		let mut values = vec![
+			self.character.boxed(),
+			self.state.boxed(),
+			self.position.into_struct_array(version).boxed(),
+			self.direction.boxed(),
+			self.percent.boxed(),
+			self.shield.boxed(),
+			self.last_attack_landed.boxed(),
+			self.combo_count.boxed(),
+			self.last_hit_by.boxed(),
+			self.stocks.boxed(),
+		];
+
 		if version.gte(0, 2) {
 			values.push(self.state_age.unwrap().boxed());
 			if version.gte(2, 0) {
-				values.push(self.state_flags.unwrap().into_struct_array(version).boxed());
-				values.push(self.misc_as.unwrap().boxed());
-				values.push(self.airborne.unwrap().boxed());
-				values.push(self.ground.unwrap().boxed());
-				values.push(self.jumps.unwrap().boxed());
-				values.push(self.l_cancel.unwrap().boxed());
+				values.extend([
+					self.state_flags.unwrap().into_struct_array(version).boxed(),
+					self.misc_as.unwrap().boxed(),
+					self.airborne.unwrap().boxed(),
+					self.ground.unwrap().boxed(),
+					self.jumps.unwrap().boxed(),
+					self.l_cancel.unwrap().boxed(),
+				]);
+
 				if version.gte(2, 1) {
 					values.push(self.hurtbox_state.unwrap().boxed());
 					if version.gte(3, 5) {
@@ -786,8 +780,10 @@ impl StructArrayConvertible for Post {
 							if version.gte(3, 11) {
 								values.push(self.animation_index.unwrap().boxed());
 								if version.gte(3, 16) {
-									values.push(self.last_hit_by_instance.unwrap().boxed());
-									values.push(self.instance_id.unwrap().boxed())
+									values.extend([
+										self.last_hit_by_instance.unwrap().boxed(),
+										self.instance_id.unwrap().boxed(),
+									]);
 								}
 							}
 						}
@@ -795,6 +791,7 @@ impl StructArrayConvertible for Post {
 				}
 			}
 		};
+
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -932,7 +929,7 @@ impl StructArrayConvertible for Post {
 					.unwrap()
 					.clone()
 			}),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -941,51 +938,56 @@ use crate::frame::immutable::Pre;
 
 impl StructArrayConvertible for Pre {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("random_seed", DataType::UInt32, false));
-			fields.push(Field::new("state", DataType::UInt16, false));
-			fields.push(Field::new("position", Position::data_type(version), false));
-			fields.push(Field::new("direction", DataType::Float32, false));
-			fields.push(Field::new("joystick", Position::data_type(version), false));
-			fields.push(Field::new("cstick", Position::data_type(version), false));
-			fields.push(Field::new("triggers", DataType::Float32, false));
-			fields.push(Field::new("buttons", DataType::UInt32, false));
-			fields.push(Field::new("buttons_physical", DataType::UInt16, false));
-			fields.push(Field::new(
+		let mut fields = vec![
+			Field::new("random_seed", DataType::UInt32, false),
+			Field::new("state", DataType::UInt16, false),
+			Field::new("position", Position::data_type(version), false),
+			Field::new("direction", DataType::Float32, false),
+			Field::new("joystick", Position::data_type(version), false),
+			Field::new("cstick", Position::data_type(version), false),
+			Field::new("triggers", DataType::Float32, false),
+			Field::new("buttons", DataType::UInt32, false),
+			Field::new("buttons_physical", DataType::UInt16, false),
+			Field::new(
 				"triggers_physical",
 				TriggersPhysical::data_type(version),
 				false,
-			));
-			if version.gte(1, 2) {
-				fields.push(Field::new("raw_analog_x", DataType::Int8, false));
-				if version.gte(1, 4) {
-					fields.push(Field::new("percent", DataType::Float32, false));
-					if version.gte(3, 15) {
-						fields.push(Field::new("raw_analog_y", DataType::Int8, false));
-						if version.gte(3, 17) {
-							fields.push(Field::new("raw_analog_cstick_x", DataType::Int8, false));
-							fields.push(Field::new("raw_analog_cstick_y", DataType::Int8, false))
-						}
+			),
+		];
+
+		if version.gte(1, 2) {
+			fields.push(Field::new("raw_analog_x", DataType::Int8, false));
+			if version.gte(1, 4) {
+				fields.push(Field::new("percent", DataType::Float32, false));
+				if version.gte(3, 15) {
+					fields.push(Field::new("raw_analog_y", DataType::Int8, false));
+					if version.gte(3, 17) {
+						fields.extend([
+							Field::new("raw_analog_cstick_x", DataType::Int8, false),
+							Field::new("raw_analog_cstick_y", DataType::Int8, false),
+						]);
 					}
 				}
 			}
-		};
+		}
+
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.random_seed.boxed());
-		values.push(self.state.boxed());
-		values.push(self.position.into_struct_array(version).boxed());
-		values.push(self.direction.boxed());
-		values.push(self.joystick.into_struct_array(version).boxed());
-		values.push(self.cstick.into_struct_array(version).boxed());
-		values.push(self.triggers.boxed());
-		values.push(self.buttons.boxed());
-		values.push(self.buttons_physical.boxed());
-		values.push(self.triggers_physical.into_struct_array(version).boxed());
+		let mut values = vec![
+			self.random_seed.boxed(),
+			self.state.boxed(),
+			self.position.into_struct_array(version).boxed(),
+			self.direction.boxed(),
+			self.joystick.into_struct_array(version).boxed(),
+			self.cstick.into_struct_array(version).boxed(),
+			self.triggers.boxed(),
+			self.buttons.boxed(),
+			self.buttons_physical.boxed(),
+			self.triggers_physical.into_struct_array(version).boxed(),
+		];
+
 		if version.gte(1, 2) {
 			values.push(self.raw_analog_x.unwrap().boxed());
 			if version.gte(1, 4) {
@@ -993,12 +995,15 @@ impl StructArrayConvertible for Pre {
 				if version.gte(3, 15) {
 					values.push(self.raw_analog_y.unwrap().boxed());
 					if version.gte(3, 17) {
-						values.push(self.raw_analog_cstick_x.unwrap().boxed());
-						values.push(self.raw_analog_cstick_y.unwrap().boxed())
+						values.extend([
+							self.raw_analog_cstick_x.unwrap().boxed(),
+							self.raw_analog_cstick_y.unwrap().boxed(),
+						]);
 					}
 				}
 			}
 		};
+
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -1097,7 +1102,7 @@ impl StructArrayConvertible for Pre {
 					.unwrap()
 					.clone()
 			}),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -1106,18 +1111,15 @@ use crate::frame::immutable::StadiumTransformation;
 
 impl StructArrayConvertible for StadiumTransformation {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("event", DataType::UInt16, false));
-			fields.push(Field::new("type", DataType::UInt16, false))
-		};
+		let fields = vec![
+			Field::new("event", DataType::UInt16, false),
+			Field::new("type", DataType::UInt16, false),
+		];
 		DataType::Struct(fields)
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.event.boxed());
-		values.push(self.r#type.boxed());
+		let values = vec![self.event.boxed(), self.r#type.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -1134,7 +1136,7 @@ impl StructArrayConvertible for StadiumTransformation {
 				.downcast_ref::<PrimitiveArray<u16>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -1143,13 +1145,10 @@ use crate::frame::immutable::Start;
 
 impl StructArrayConvertible for Start {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("random_seed", DataType::UInt32, false));
-			if version.gte(3, 10) {
-				fields.push(Field::new("scene_frame_counter", DataType::UInt32, false))
-			}
-		};
+		let mut fields = vec![Field::new("random_seed", DataType::UInt32, false)];
+		if version.gte(3, 10) {
+			fields.push(Field::new("scene_frame_counter", DataType::UInt32, false))
+		}
 		DataType::Struct(fields)
 	}
 
@@ -1176,7 +1175,7 @@ impl StructArrayConvertible for Start {
 					.unwrap()
 					.clone()
 			}),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -1185,24 +1184,24 @@ use crate::frame::immutable::StateFlags;
 
 impl StructArrayConvertible for StateFlags {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("0", DataType::UInt8, false));
-			fields.push(Field::new("1", DataType::UInt8, false));
-			fields.push(Field::new("2", DataType::UInt8, false));
-			fields.push(Field::new("3", DataType::UInt8, false));
-			fields.push(Field::new("4", DataType::UInt8, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("0", DataType::UInt8, false),
+			Field::new("1", DataType::UInt8, false),
+			Field::new("2", DataType::UInt8, false),
+			Field::new("3", DataType::UInt8, false),
+			Field::new("4", DataType::UInt8, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.0.boxed());
-		values.push(self.1.boxed());
-		values.push(self.2.boxed());
-		values.push(self.3.boxed());
-		values.push(self.4.boxed());
+		let values = vec![
+			self.0.boxed(),
+			self.1.boxed(),
+			self.2.boxed(),
+			self.3.boxed(),
+			self.4.boxed(),
+		];
+
 		StructArray::new(Self::data_type(version), values, None)
 	}
 
@@ -1242,18 +1241,14 @@ use crate::frame::immutable::TriggersPhysical;
 
 impl StructArrayConvertible for TriggersPhysical {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("l", DataType::Float32, false));
-			fields.push(Field::new("r", DataType::Float32, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("l", DataType::Float32, false),
+			Field::new("r", DataType::Float32, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.l.boxed());
-		values.push(self.r.boxed());
+		let values = vec![self.l.boxed(), self.r.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -1270,7 +1265,7 @@ impl StructArrayConvertible for TriggersPhysical {
 				.downcast_ref::<PrimitiveArray<f32>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -1279,24 +1274,23 @@ use crate::frame::immutable::Velocities;
 
 impl StructArrayConvertible for Velocities {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("self_x_air", DataType::Float32, false));
-			fields.push(Field::new("self_y", DataType::Float32, false));
-			fields.push(Field::new("knockback_x", DataType::Float32, false));
-			fields.push(Field::new("knockback_y", DataType::Float32, false));
-			fields.push(Field::new("self_x_ground", DataType::Float32, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("self_x_air", DataType::Float32, false),
+			Field::new("self_y", DataType::Float32, false),
+			Field::new("knockback_x", DataType::Float32, false),
+			Field::new("knockback_y", DataType::Float32, false),
+			Field::new("self_x_ground", DataType::Float32, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.self_x_air.boxed());
-		values.push(self.self_y.boxed());
-		values.push(self.knockback_x.boxed());
-		values.push(self.knockback_y.boxed());
-		values.push(self.self_x_ground.boxed());
+		let values = vec![
+			self.self_x_air.boxed(),
+			self.self_y.boxed(),
+			self.knockback_x.boxed(),
+			self.knockback_y.boxed(),
+			self.self_x_ground.boxed(),
+		];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -1328,7 +1322,7 @@ impl StructArrayConvertible for Velocities {
 				.downcast_ref::<PrimitiveArray<f32>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
@@ -1337,18 +1331,14 @@ use crate::frame::immutable::Velocity;
 
 impl StructArrayConvertible for Velocity {
 	fn data_type(version: Version) -> DataType {
-		let mut fields = vec![];
-		{
-			fields.push(Field::new("x", DataType::Float32, false));
-			fields.push(Field::new("y", DataType::Float32, false))
-		};
-		DataType::Struct(fields)
+		DataType::Struct(vec![
+			Field::new("x", DataType::Float32, false),
+			Field::new("y", DataType::Float32, false),
+		])
 	}
 
 	fn into_struct_array(self, version: Version) -> StructArray {
-		let mut values = vec![];
-		values.push(self.x.boxed());
-		values.push(self.y.boxed());
+		let values = vec![self.x.boxed(), self.y.boxed()];
 		StructArray::new(Self::data_type(version), values, self.validity)
 	}
 
@@ -1365,7 +1355,7 @@ impl StructArrayConvertible for Velocity {
 				.downcast_ref::<PrimitiveArray<f32>>()
 				.unwrap()
 				.clone(),
-			validity: validity,
+			validity,
 		}
 	}
 }
